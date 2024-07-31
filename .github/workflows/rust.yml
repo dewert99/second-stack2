@@ -17,7 +17,7 @@ jobs:
         with:
           channel: 1.73.0
           cache-target: dev
-          components: clippy
+          components: clippy, rustfmt
       - run: cargo +1.73.0 fmt --check
       - run: cargo +1.73.0 clippy
   miri-test:
@@ -31,4 +31,4 @@ jobs:
           channel: nightly
           cache-target: dev
           components: miri
-      - run: cargo +nightly miri test
+      - run: MIRIFLAGS="-Zmiri-tree-borrows" cargo +nightly miri test
