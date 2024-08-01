@@ -1,7 +1,6 @@
 use crate::core::*;
-use std::fmt::{Debug, Formatter};
+use stackbox::StackBox;
 use std::mem::MaybeUninit;
-use std::ops::Deref;
 // Conveince functions
 
 /// Place a potentially very large value on the second stack.
@@ -75,49 +74,12 @@ where
     })
 }
 
-pub struct DropSliceIter<'a, T>(pub DropSlice<'a, T>);
-
-impl<'a, T> Iterator for DropSliceIter<'a, T> {
+impl<'a, T: 'a> IntoIterator for StackVec<'a, T> {
     type Item = T;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.pop_front()
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.0.len(), Some(self.0.len()))
-    }
-}
-
-impl<'a, T> ExactSizeIterator for DropSliceIter<'a, T> {}
-
-impl<'a, T> DoubleEndedIterator for DropSliceIter<'a, T> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        self.0.pop_back()
-    }
-}
-
-impl<'a, T> IntoIterator for DropSlice<'a, T> {
-    type Item = T;
-    type IntoIter = DropSliceIter<'a, T>;
+    type IntoIter = <StackBox<'a, [T]> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        DropSliceIter(self)
-    }
-}
-
-impl<'a, T> IntoIterator for StackVec<'a, T> {
-    type Item = T;
-
-    type IntoIter = DropSliceIter<'a, T>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        DropSliceIter(self.into_slice())
-    }
-}
-
-impl<'a, T: Debug> Debug for DropSlice<'a, T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        self.deref().fmt(f)
+        self.into_slice().into_iter()
     }
 }

@@ -1,14 +1,11 @@
-pub use drop_slice::DropSlice;
+use stackbox::StackBox;
 use std::alloc::{alloc, dealloc, Layout};
 use std::any::type_name;
 use std::cell::Cell;
 use std::cmp::{max, min};
 use std::marker::PhantomData;
-use std::mem;
-use std::mem::{align_of, size_of, MaybeUninit};
+use std::mem::{align_of, size_of, ManuallyDrop, MaybeUninit};
 use std::ptr::{copy_nonoverlapping, drop_in_place, null_mut, slice_from_raw_parts_mut};
-
-mod drop_slice;
 
 type UByte = MaybeUninit<u8>;
 
@@ -108,12 +105,11 @@ impl<'a, T> StackVec<'a, T> {
         slice_from_raw_parts_mut(data, self.slice_len)
     }
 
-    /// Converts the vector into a [`DropSlice`] which implements `Deref<Target=[T]>`
+    /// Converts the vector into a [`StackBox`] which implements `Deref<Target=[T]>`
     #[inline]
-    pub fn into_slice(mut self) -> DropSlice<'a, T> {
-        let res = DropSlice::new(self.slice_ptr());
-        mem::forget(self);
-        res
+    pub fn into_slice(self) -> StackBox<'a, [T]> {
+        let mut this = ManuallyDrop::new(self);
+        unsafe { StackBox::assume_owns(&mut *(this.slice_ptr() as *mut ManuallyDrop<[T]>)) }
     }
 
     /// Appends an element to the back of the vector.

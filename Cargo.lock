@@ -3,5 +3,23 @@
 version = 3
 
 [[package]]
+name = "paste"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
 name = "second-stack2"
 version = "0.1.0"
+dependencies = [
+ "stackbox",
+]
+
+[[package]]
+name = "stackbox"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64b86ea9e381b8d3af99bc7ffe8dad8f5fbdfd7ca06522e28e650528610d0bba"
+dependencies = [
+ "paste",
+]
