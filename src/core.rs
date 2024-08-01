@@ -149,6 +149,71 @@ impl<'a, T> StackVec<'a, T> {
         self.slice_len += 1;
     }
 
+    #[inline]
+    // Safety: it must be possible to copy out of `s`
+    unsafe fn extend_slice_raw(&mut self, s: *const [T]) {
+        let len = LEN.get();
+        let needed = len + (size_of::<T>() * s.len());
+        if CAP.get() < needed {
+            realloc(needed);
+        }
+        let ptr = unsafe { BASE.get().add(len) } as *mut T;
+        unsafe { copy_nonoverlapping(s as *const T, ptr, s.len()) };
+        LEN.set(needed);
+        self.slice_len += s.len();
+    }
+
+    /// Copies the elements of `s` to the back of the vector.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity of the second stack exceeds `isize::MAX` _bytes_.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use second_stack2::with_stack_vec;
+    /// with_stack_vec(|mut vec| {
+    ///     vec.extend_slice(&[1, 2, 3]);
+    ///     assert_eq!(&*vec.into_slice(), &[1, 2, 3]);
+    /// })
+    /// ```
+    #[inline]
+    pub fn extend_slice(&mut self, s: &[T])
+    where
+        T: Copy,
+    {
+        // Safety `T: Copy` so we can copy out of it
+        unsafe { self.extend_slice_raw(s as *const [T]) }
+    }
+
+    /// Moves the elements out of `s` to the back of the vector.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new capacity of the second stack exceeds `isize::MAX` _bytes_.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use stackbox::mk_slot;
+    /// use second_stack2::with_stack_vec;
+    /// with_stack_vec(|mut vec| {
+    ///     let mut s = mk_slot();
+    ///     let s = s.stackbox([Box::new(0), Box::new(1), Box::new(2)]);
+    ///     vec.extend_owned_slice(s.into_slice());
+    ///     assert_eq!(&*vec.into_slice(), &[Box::new(0), Box::new(1), Box::new(2)])
+    /// })
+    /// ```
+    #[inline]
+    pub fn extend_owned_slice(&mut self, s: StackBox<[T]>) {
+        let s = ManuallyDrop::new(s);
+        // Safety `StackBox` is repr(transparent) of a pointer
+        let s = unsafe { core::mem::transmute(s) };
+        // Safety s is in a `ManuallyDrop` and owns the data so we can copy of it
+        unsafe { self.extend_slice_raw(s) }
+    }
+
     /// Removes the last element from a vector and returns it, or [`None`] if it
     /// is empty.
     ///
