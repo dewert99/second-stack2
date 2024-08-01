@@ -112,6 +112,26 @@ impl<'a, T> StackVec<'a, T> {
         unsafe { StackBox::assume_owns(&mut *(this.slice_ptr() as *mut ManuallyDrop<[T]>)) }
     }
 
+    /// Converts the vector into a [`StackBox`] which implements `Deref<Target=[T]>` and
+    /// returns another stackvec that can be used to continue growing the second stack
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use second_stack2::with_stack_vec;
+    /// with_stack_vec(|mut vec1| {
+    ///     vec1.extend_from_slice(&[true, false]);
+    ///     let (slice1, mut vec2) = vec1.into_slice_full();
+    ///     vec2.extend_from_slice(&[1, 2, 3]);
+    ///     assert_eq!(&*slice1, &[true, false]);
+    ///     assert_eq!(&*vec2.into_slice(), &[1, 2, 3]);
+    /// })
+    /// ```
+    #[inline]
+    pub fn into_slice_full<U>(self) -> (StackBox<'a, [T]>, StackVec<'a, U>) {
+        (self.into_slice(), stack_vec())
+    }
+
     /// Appends an element to the back of the vector.
     ///
     /// # Panics

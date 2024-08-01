@@ -47,3 +47,14 @@ pub fn test_zst() {
         assert_eq!(slice, &Vec::from_iter(0..3))
     })
 }
+
+#[test]
+pub fn test_into_slice_full() {
+    reserve_buffer_capacity(8);
+    with_stack_vec(|mut vec| {
+        vec.extend((0..2).map(Box::new));
+        let (slice, mut vec2) = vec.into_slice_full();
+        vec2.extend_from_slice(&[0u8; 10]);
+        assert_eq!(&*slice, &Vec::from_iter((0..2).map(Box::new)))
+    })
+}
