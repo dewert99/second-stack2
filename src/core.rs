@@ -151,7 +151,7 @@ impl<'a, T> StackVec<'a, T> {
 
     #[inline]
     // Safety: it must be possible to copy out of `s`
-    unsafe fn extend_slice_raw(&mut self, s: *const T, s_len: usize) {
+    unsafe fn extend_from_slice_raw(&mut self, s: *const T, s_len: usize) {
         let len = LEN.get();
         let needed = len + (size_of::<T>() * s_len);
         if CAP.get() < needed {
@@ -174,17 +174,18 @@ impl<'a, T> StackVec<'a, T> {
     /// ```
     /// use second_stack2::with_stack_vec;
     /// with_stack_vec(|mut vec| {
-    ///     vec.extend_slice(&[1, 2, 3]);
-    ///     assert_eq!(&*vec.into_slice(), &[1, 2, 3]);
+    ///     vec.extend_from_slice(&[0, 1, 2]);
+    ///     vec.push(3);
+    ///     assert_eq!(&*vec.into_slice(), &[0, 1, 2, 3]);
     /// })
     /// ```
     #[inline]
-    pub fn extend_slice(&mut self, s: &[T])
+    pub fn extend_from_slice(&mut self, s: &[T])
     where
         T: Copy,
     {
         // Safety `T: Copy` so we can copy out of it
-        unsafe { self.extend_slice_raw(s as *const [T] as *const T, s.len()) }
+        unsafe { self.extend_from_slice_raw(s as *const [T] as *const T, s.len()) }
     }
 
     /// Moves the elements out of `s` to the back of the vector.
@@ -201,18 +202,19 @@ impl<'a, T> StackVec<'a, T> {
     /// with_stack_vec(|mut vec| {
     ///     let mut s = mk_slot();
     ///     let s = s.stackbox([Box::new(0), Box::new(1), Box::new(2)]);
-    ///     vec.extend_owned_slice(s.into_slice());
-    ///     assert_eq!(&*vec.into_slice(), &[Box::new(0), Box::new(1), Box::new(2)])
+    ///     vec.extend_from_owned_slice(s.into_slice());
+    ///     vec.push(Box::new(4));
+    ///     assert_eq!(&*vec.into_slice(), &[Box::new(0), Box::new(1), Box::new(2), Box::new(4)])
     /// })
     /// ```
     #[inline]
-    pub fn extend_owned_slice(&mut self, s: StackBox<[T]>) {
+    pub fn extend_from_owned_slice(&mut self, s: StackBox<[T]>) {
         let len = s.len();
         let s = ManuallyDrop::new(s);
         // Safety `StackBox` is repr(transparent) of a pointer
         let s = unsafe { core::mem::transmute::<_, *const [T]>(s) };
         // Safety s is in a `ManuallyDrop` and owns the data so we can copy of it
-        unsafe { self.extend_slice_raw(s as *const T, len) }
+        unsafe { self.extend_from_slice_raw(s as *const T, len) }
     }
 
     /// Removes the last element from a vector and returns it, or [`None`] if it
