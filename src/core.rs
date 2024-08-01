@@ -85,6 +85,15 @@ fn realloc(required: usize) {
 /// calling [`StackVec::into_slice`] which prevents new elements from being added
 ///
 /// It does not implement `Send` since the second stack is thread local.
+// Invariants:
+// slice_offset % align_of::<T> == 0
+// ALIGN_REQUIREMENT % align_of::<T> == 0
+// # Since ALIGN_REQUIREMENT is a monotonically increasing power of two this is stable
+// slice_offset + slice_len * size_of::<T> == LEN
+// # LEN can be modified by other `StackVec`s created by `with_stack_vec` or `uninit_slice`,
+// # but the functions passed to those functions have `Send` bounds so they cannot use this
+// # `StackVec`, after they end they restore LEN to its previous value so this stack vec won't
+// # notice the change
 pub struct StackVec<'a, T> {
     slice_offset: usize,
     slice_len: usize,
