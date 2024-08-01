@@ -151,16 +151,16 @@ impl<'a, T> StackVec<'a, T> {
 
     #[inline]
     // Safety: it must be possible to copy out of `s`
-    unsafe fn extend_slice_raw(&mut self, s: *const [T]) {
+    unsafe fn extend_slice_raw(&mut self, s: *const T, s_len: usize) {
         let len = LEN.get();
-        let needed = len + (size_of::<T>() * s.len());
+        let needed = len + (size_of::<T>() * s_len);
         if CAP.get() < needed {
             realloc(needed);
         }
         let ptr = unsafe { BASE.get().add(len) } as *mut T;
-        unsafe { copy_nonoverlapping(s as *const T, ptr, s.len()) };
+        unsafe { copy_nonoverlapping(s, ptr, s_len) };
         LEN.set(needed);
-        self.slice_len += s.len();
+        self.slice_len += s_len;
     }
 
     /// Copies the elements of `s` to the back of the vector.
@@ -184,7 +184,7 @@ impl<'a, T> StackVec<'a, T> {
         T: Copy,
     {
         // Safety `T: Copy` so we can copy out of it
-        unsafe { self.extend_slice_raw(s as *const [T]) }
+        unsafe { self.extend_slice_raw(s as *const [T] as *const T, s.len()) }
     }
 
     /// Moves the elements out of `s` to the back of the vector.
@@ -207,11 +207,12 @@ impl<'a, T> StackVec<'a, T> {
     /// ```
     #[inline]
     pub fn extend_owned_slice(&mut self, s: StackBox<[T]>) {
+        let len = s.len();
         let s = ManuallyDrop::new(s);
         // Safety `StackBox` is repr(transparent) of a pointer
-        let s = unsafe { core::mem::transmute(s) };
+        let s = unsafe { core::mem::transmute::<_, *const [T]>(s) };
         // Safety s is in a `ManuallyDrop` and owns the data so we can copy of it
-        unsafe { self.extend_slice_raw(s) }
+        unsafe { self.extend_slice_raw(s as *const T, len) }
     }
 
     /// Removes the last element from a vector and returns it, or [`None`] if it
