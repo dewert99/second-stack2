@@ -6,6 +6,3 @@ rust-version = "1.73.0"
 
 [dependencies]
 stackbox = { version = "0.1.2" , default-features = false}
-
-[dev-dependencies]
-send_wrapper = "0.6.0"

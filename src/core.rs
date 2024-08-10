@@ -111,10 +111,8 @@ impl<'a, T> StackVec<'a, T> {
     /// `StackVec` into the function using external crates
     ///
     /// ```should_panic
-    /// use send_wrapper::SendWrapper;
     /// use second_stack2::{with_stack_vec, StackVec};
     /// with_stack_vec(|mut s: StackVec<u32>| {
-    ///     let s = SendWrapper::new(s);
     ///     with_stack_vec(|_: StackVec<u32>| {
     ///         s.assert_inv(); // panics
     ///     })
@@ -373,7 +371,7 @@ impl Drop for ResetLen {
 /// [`with_stack_vec`]
 ///
 /// ## Example
-/// ```compile_fail
+/// ```should_panic
 /// use second_stack2::with_stack_vec;
 /// with_stack_vec(|mut v1| {
 ///    v1.push(42);
