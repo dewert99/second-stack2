@@ -391,7 +391,7 @@ impl Drop for ResetLen {
 /// In the future this bound may be relaxed to a custom auto trait once they become stable
 pub fn with_stack_vec<T, R, F>(f: F) -> R
 where
-    F: FnOnce(StackVec<T>) -> R + Send,
+    F: FnOnce(StackVec<T>) -> R,
 {
     let reset_len = ResetLen(LEN.get());
     let res = f(stack_vec());
@@ -459,7 +459,7 @@ fn pre_uninit_slice<T>(len: usize) -> StackVec<'static, MaybeUninit<T>> {
 /// See [`with_stack_vec`] for details on the `Send` bound
 pub fn uninit_slice<T, F, R>(len: usize, f: F) -> R
 where
-    F: FnOnce(&mut [MaybeUninit<T>]) -> R + Send,
+    F: FnOnce(&mut [MaybeUninit<T>]) -> R,
 {
     let reset_len = ResetLen(LEN.get());
     let res = f(&mut pre_uninit_slice(len).into_slice());

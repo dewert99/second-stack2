@@ -16,7 +16,7 @@ use std::mem::MaybeUninit;
 #[inline]
 pub fn uninit<T, F, R>(f: F) -> R
 where
-    F: FnOnce(&mut MaybeUninit<T>) -> R + Send,
+    F: FnOnce(&mut MaybeUninit<T>) -> R,
 {
     uninit_slice(1, |x| f(&mut x[0]))
 }
@@ -32,8 +32,8 @@ impl<'a, T> Extend<T> for StackVec<'a, T> {
 /// Panics when running out of memory (e.g. if the iterator is unbounded)
 pub fn try_buffer<T, F, R, I, E>(i: I, f: F) -> Result<R, E>
 where
-    I: Iterator<Item = Result<T, E>> + Send,
-    F: FnOnce(&mut [T]) -> Result<R, E> + Send,
+    I: Iterator<Item = Result<T, E>>,
+    F: FnOnce(&mut [T]) -> Result<R, E>,
 {
     with_stack_vec(|mut s| {
         let mut res = Ok(());
@@ -66,8 +66,8 @@ where
 // ```
 pub fn buffer<T, F, R, I>(i: I, f: F) -> R
 where
-    I: Iterator<Item = T> + Send,
-    F: FnOnce(&mut [T]) -> R + Send,
+    I: Iterator<Item = T>,
+    F: FnOnce(&mut [T]) -> R,
 {
     with_stack_vec(|mut s| {
         s.extend(i);
@@ -80,8 +80,8 @@ where
 /// [`Iterator::try_for_each`]
 pub fn try_buffer_alt<T, F, R, I, E>(i: I, f: F) -> Result<R, E>
 where
-    I: Iterator<Item = Result<T, E>> + Send,
-    F: FnOnce(&mut [T]) -> Result<R, E> + Send,
+    I: Iterator<Item = Result<T, E>>,
+    F: FnOnce(&mut [T]) -> Result<R, E>,
 {
     let mut i = i;
     with_stack_vec(|mut s| {
@@ -100,8 +100,8 @@ where
 /// [`Iterator::for_each`]
 pub fn buffer_alt<T, F, R, I>(i: I, f: F) -> R
 where
-    I: Iterator<Item = T> + Send,
-    F: FnOnce(&mut [T]) -> R + Send,
+    I: Iterator<Item = T>,
+    F: FnOnce(&mut [T]) -> R,
 {
     match try_buffer_alt(i.map(Ok::<_, Infallible>), |x| Ok(f(x))) {
         Ok(x) => x,
