@@ -99,6 +99,36 @@ pub struct StackVec<'a, T> {
 }
 
 impl<'a, T> StackVec<'a, T> {
+    /// Assert that this `StackVec` satisfies its invariant
+    ///
+    /// This is initially true for a `StackVec` that is created using [`with_stack_vec`].
+    ///
+    /// The invariant is preserved by all of `StackVec`s methods
+    ///
+    /// Calling [`with_stack_vec`] breaks the invariant of the `StackVec` created from the previous
+    /// call to [`with_stack_vec`] during the call of the passed in function but restores it again
+    /// afterwards, so a `StackVec` with a broken invariant can be observed by smuggling a
+    /// `StackVec` into the function using external crates
+    ///
+    /// ```should_panic
+    /// use send_wrapper::SendWrapper;
+    /// use second_stack2::{with_stack_vec, StackVec};
+    /// with_stack_vec(|mut s: StackVec<u32>| {
+    ///     let s = SendWrapper::new(s);
+    ///     with_stack_vec(|_: StackVec<u32>| {
+    ///         s.assert_inv(); // panics
+    ///     })
+    /// })
+    /// ```
+    #[inline]
+    pub fn assert_inv(&self) {
+        assert_eq!(
+            LEN.get(),
+            self.slice_offset + self.slice_len * size_of::<T>(),
+            "This stack-vec was smuggled into the scope of another stack-vec"
+        )
+    }
+
     #[inline]
     fn slice_ptr(&mut self) -> *mut [T] {
         let data = unsafe { BASE.get().add(self.slice_offset) as *mut T };
@@ -132,11 +162,34 @@ impl<'a, T> StackVec<'a, T> {
         (self.into_slice(), stack_vec())
     }
 
+    /// Uncheck version of [`push`](StackVec::push)
+    ///
+    /// # Safety
+    ///
+    /// The invariant must not be currently broken (see [`assert_inv`](StackVec::assert_inv))
+    ///
+    /// Creating a closure that calls `push_unchecked` is very dangerous since that closure could
+    /// be smuggled into another scope and then called leading to undefined behaviour
+    #[inline]
+    pub unsafe fn push_unchecked(&mut self, e: T) {
+        let len = LEN.get();
+        let needed = len + size_of::<T>();
+        if CAP.get() < needed {
+            realloc(needed);
+        }
+        let ptr = unsafe { BASE.get().add(len) } as *mut T;
+        unsafe { ptr.write(e) };
+        LEN.set(needed);
+        self.slice_len += 1;
+    }
+
     /// Appends an element to the back of the vector.
     ///
     /// # Panics
     ///
     /// Panics if the new capacity of the second stack exceeds `isize::MAX` _bytes_.
+    ///
+    /// Panics if the invariant is broken (see [`assert_inv`](StackVec::assert_inv))
     ///
     /// # Examples
     ///
@@ -158,15 +211,10 @@ impl<'a, T> StackVec<'a, T> {
     /// offset by the *capacity* *O*(1) insertions it allows.
     #[inline]
     pub fn push(&mut self, e: T) {
-        let len = LEN.get();
-        let needed = len + size_of::<T>();
-        if CAP.get() < needed {
-            realloc(needed);
+        self.assert_inv();
+        unsafe {
+            self.push_unchecked(e);
         }
-        let ptr = unsafe { BASE.get().add(len) } as *mut T;
-        unsafe { ptr.write(e) };
-        LEN.set(needed);
-        self.slice_len += 1;
     }
 
     #[inline]
@@ -204,6 +252,7 @@ impl<'a, T> StackVec<'a, T> {
     where
         T: Copy,
     {
+        self.assert_inv();
         // Safety `T: Copy` so we can copy out of it
         unsafe { self.extend_from_slice_raw(s as *const [T] as *const T, s.len()) }
     }
@@ -229,12 +278,35 @@ impl<'a, T> StackVec<'a, T> {
     /// ```
     #[inline]
     pub fn extend_from_owned_slice(&mut self, s: StackBox<[T]>) {
+        self.assert_inv();
         let len = s.len();
         let s = ManuallyDrop::new(s);
         // Safety `StackBox` is repr(transparent) of a pointer
         let s = unsafe { core::mem::transmute::<_, *const [T]>(s) };
         // Safety s is in a `ManuallyDrop` and owns the data so we can copy of it
         unsafe { self.extend_from_slice_raw(s as *const T, len) }
+    }
+
+    /// Uncheck version of [`pop`](StackVec::pop)
+    ///
+    /// # Safety
+    ///
+    /// The invariant must not be currently broken (see [`assert_inv`](StackVec::assert_inv))
+    ///
+    /// Creating a closure that calls `push_unchecked` is very dangerous since that closure could
+    /// be smuggled into another scope and then called leading to undefined behaviour
+    #[inline]
+    pub unsafe fn pop_unchecked(&mut self) -> Option<T> {
+        if self.slice_len == 0 {
+            return None;
+        }
+        self.slice_len -= 1;
+        let len = LEN.get();
+        let new_len = len - size_of::<T>();
+        let ptr = unsafe { BASE.get().add(new_len) } as *mut T;
+        let res = unsafe { ptr.read() };
+        LEN.set(new_len);
+        Some(res)
     }
 
     /// Removes the last element from a vector and returns it, or [`None`] if it
@@ -260,16 +332,8 @@ impl<'a, T> StackVec<'a, T> {
     /// Takes *O*(1) time.
     #[inline]
     pub fn pop(&mut self) -> Option<T> {
-        if self.slice_len == 0 {
-            return None;
-        }
-        self.slice_len -= 1;
-        let len = LEN.get();
-        let new_len = len - size_of::<T>();
-        let ptr = unsafe { BASE.get().add(new_len) } as *mut T;
-        let res = unsafe { ptr.read() };
-        LEN.set(new_len);
-        Some(res)
+        self.assert_inv();
+        unsafe { self.pop_unchecked() }
     }
 }
 
@@ -354,11 +418,12 @@ fn stack_vec<T>() -> StackVec<'static, T> {
     ensure_alignment::<T>();
 
     let old_len = LEN.get();
-    // size_of::<u8> == 1 so align_offset will succeed see https://github.com/rust-lang/rust/issues/62420
-    let offset = null_mut::<u8>()
-        .wrapping_add(old_len)
-        .align_offset(align_of::<T>());
-    let base_len = old_len + offset;
+    let base_len = ((old_len + align_of::<T>()) / align_of::<T>()) * align_of::<T>();
+    assert!(
+        base_len > old_len,
+        "base_len = {base_len}, old_len = {old_len}, align = {}",
+        align_of::<T>()
+    );
     let res = StackVec {
         slice_offset: base_len,
         slice_len: 0,

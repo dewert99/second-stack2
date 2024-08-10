@@ -1,5 +1,6 @@
 use crate::core::*;
 use stackbox::StackBox;
+use std::convert::Infallible;
 use std::mem::MaybeUninit;
 // Conveince functions
 
@@ -72,6 +73,40 @@ where
         s.extend(i);
         f(&mut s.into_slice())
     })
+}
+
+/// Alternate version of [`try_buffer`] avoids checking the invariant for each element of the
+/// iterator, but walks the iterator by repeatedly calling [`Iterator::next`] instead of using
+/// [`Iterator::try_for_each`]
+pub fn try_buffer_alt<T, F, R, I, E>(i: I, f: F) -> Result<R, E>
+where
+    I: Iterator<Item = Result<T, E>> + Send,
+    F: FnOnce(&mut [T]) -> Result<R, E> + Send,
+{
+    let mut i = i;
+    with_stack_vec(|mut s| {
+        while let Some(e) = i.next() {
+            // Safety s is in the same scope it was originally created in
+            unsafe {
+                s.push_unchecked(e?);
+            }
+        }
+        f(&mut *s.into_slice())
+    })
+}
+
+/// Alternate version of [`buffer`] avoids checking the invariant for each element of the
+/// iterator, but walks the iterator by repeatedly calling [`Iterator::next`] instead of using
+/// [`Iterator::for_each`]
+pub fn buffer_alt<T, F, R, I>(i: I, f: F) -> R
+where
+    I: Iterator<Item = T> + Send,
+    F: FnOnce(&mut [T]) -> R + Send,
+{
+    match try_buffer_alt(i.map(Ok::<_, Infallible>), |x| Ok(f(x))) {
+        Ok(x) => x,
+        Err(e) => match e {},
+    }
 }
 
 impl<'a, T: 'a> IntoIterator for StackVec<'a, T> {
