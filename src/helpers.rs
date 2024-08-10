@@ -27,6 +27,44 @@ impl<'a, T> Extend<T> for StackVec<'a, T> {
     }
 }
 
+impl<'a, T> StackVec<'a, T> {
+    /// Fallible version of [`extend`](Self::extend)
+    pub fn try_extend<E, I: IntoIterator<Item = Result<T, E>>>(
+        &mut self,
+        iter: I,
+    ) -> Result<(), E> {
+        iter.into_iter().try_for_each(|x| Ok(self.push(x?)))
+    }
+
+    /// Alternate version of [`try_extend`](Self::try_extend) avoids checking the invariant for each element of the
+    /// iterator, but walks the iterator by repeatedly calling [`Iterator::next`] instead of using
+    /// [`Iterator::try_for_each`]
+    pub fn try_extend_alt<E, I: IntoIterator<Item = Result<T, E>>>(
+        &mut self,
+        iter: I,
+    ) -> Result<(), E> {
+        let mut iter = iter.into_iter();
+        self.assert_inv();
+        while let Some(e) = iter.next() {
+            // Safety s is in the same scope where we asserted its invariant
+            unsafe {
+                self.push_unchecked(e?);
+            }
+        }
+        Ok(())
+    }
+
+    /// Alternate version of [`extend`](Self::extend) avoids checking the invariant for each element of the
+    /// iterator, but walks the iterator by repeatedly calling [`Iterator::next`] instead of using
+    /// [`Iterator::for_each`]
+    pub fn extend_alt<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        match self.try_extend_alt(iter.into_iter().map(Ok::<_, Infallible>)) {
+            Ok(x) => x,
+            Err(e) => match e {},
+        }
+    }
+}
+
 /// Tries to buffer an iterator to a slice on the second stack.
 /// If successful it calls `f` with temporary access to that slice
 /// Panics when running out of memory (e.g. if the iterator is unbounded)
@@ -36,16 +74,7 @@ where
     F: FnOnce(&mut [T]) -> Result<R, E>,
 {
     with_stack_vec(|mut s| {
-        let mut res = Ok(());
-        let i1 = i.map_while(|r| match r {
-            Ok(r) => Some(r),
-            Err(e) => {
-                res = Err(e);
-                None
-            }
-        });
-        s.extend(i1);
-        res?;
+        s.try_extend(i)?;
         f(&mut s.into_slice())
     })
 }
@@ -83,14 +112,8 @@ where
     I: Iterator<Item = Result<T, E>>,
     F: FnOnce(&mut [T]) -> Result<R, E>,
 {
-    let mut i = i;
     with_stack_vec(|mut s| {
-        while let Some(e) = i.next() {
-            // Safety s is in the same scope it was originally created in
-            unsafe {
-                s.push_unchecked(e?);
-            }
-        }
+        s.try_extend_alt(i)?;
         f(&mut *s.into_slice())
     })
 }
@@ -103,10 +126,10 @@ where
     I: Iterator<Item = T>,
     F: FnOnce(&mut [T]) -> R,
 {
-    match try_buffer_alt(i.map(Ok::<_, Infallible>), |x| Ok(f(x))) {
-        Ok(x) => x,
-        Err(e) => match e {},
-    }
+    with_stack_vec(|mut s| {
+        s.extend_alt(i);
+        f(&mut *s.into_slice())
+    })
 }
 
 impl<'a, T: 'a> IntoIterator for StackVec<'a, T> {
